@@ -1,0 +1,221 @@
+<!-- FreeSWITCH Dialplan Configuration for Transfer State Tracking -->
+<!-- Add this to your dialplan/default.xml or create a separate transfer context -->
+
+<context name="transfer_tracking">
+  
+  <!-- Transfer initiation extension -->
+  <extension name="transfer_init">
+    <condition field="destination_number" expression="^(transfer_to_)(.+)$">
+      <!-- Set transfer state variables -->
+      <action application="set" data="transfer_state=trying"/>
+      <action application="set" data="transfer_start_time=${switch_time_now()}"/>
+      <action application="set" data="transfer_target=${destination_number}"/>
+      <action application="log" data="INFO Transfer initiated to ${destination_number}"/>
+      
+      <!-- Enable dialog event notifications -->
+      <action application="set" data="presence_id=${caller_id_number}@${domain_name}"/>
+      <action application="set" data="export_vars=transfer_state,transfer_start_time,transfer_target"/>
+      
+      <!-- Bridge to target with transfer progress tracking -->
+      <action application="bridge" data="{sip_invite_params=Event-Expires=3600}user/${destination_number}@${domain_name}"/>
+      
+      <!-- If bridge fails, update transfer state -->
+      <action application="set" data="transfer_state=failed"/>
+      <action application="hangup"/>
+    </condition>
+  </extension>
+
+  <!-- Regular transfer with enhanced state tracking -->
+  <extension name="attended_transfer">
+    <condition field="destination_number" expression="^(\*87)(.+)$">
+      <!-- Park the current call -->
+      <action application="set" data="park_after_bridge=true"/>
+      <action application="set" data="transfer_state=trying"/>
+      <action application="set" data="transfer_start_time=${switch_time_now()}"/>
+      <action application="set" data="transfer_target=${destination_number}"/>
+      
+      <!-- Set up for attended transfer -->
+      <action application="set" data="continue_on_fail=true"/>
+      <action application="set" data="hangup_after_bridge=false"/>
+      
+      <!-- Enable presence and dialog state notifications -->
+      <action application="export" data="presence_id=${caller_id_number}@${domain_name}"/>
+      <action application="export" data="transfer_state"/>
+      <action application="export" data="transfer_start_time"/>
+      <action application="export" data="transfer_target"/>
+      
+      <!-- Bridge to consultation target -->
+      <action application="bridge" data="user/${destination_number}@${domain_name}"/>
+      
+      <!-- Handle post-bridge actions -->
+      <action application="transfer" data="transfer_complete"/>
+    </condition>
+  </extension>
+
+  <!-- Blind transfer with state tracking -->
+  <extension name="blind_transfer">
+    <condition field="destination_number" expression="^(\#87)(.+)$">
+      <!-- Set transfer variables -->
+      <action application="set" data="transfer_state=trying"/>
+      <action application="set" data="transfer_start_time=${switch_time_now()}"/>
+      <action application="set" data="transfer_target=${destination_number}"/>
+      <action application="set" data="transfer_type=blind"/>
+      
+      <!-- Export variables to be available for SUBSCRIBE handler -->
+      <action application="export" data="nolocal:transfer_state=${transfer_state}"/>
+      <action application="export" data="nolocal:transfer_start_time=${transfer_start_time}"/>
+      <action application="export" data="nolocal:transfer_target=${transfer_target}"/>
+      <action application="export" data="nolocal:transfer_type=${transfer_type}"/>
+      
+      <!-- Perform blind transfer -->
+      <action application="deflect" data="user/${destination_number}@${domain_name}"/>
+      <action application="hangup"/>
+    </condition>
+  </extension>
+
+  <!-- Transfer progress tracking -->
+  <extension name="transfer_progress">
+    <condition field="destination_number" expression="^transfer_progress$">
+      <!-- Update state to ringing -->
+      <action application="set" data="transfer_state=ringing"/>
+      <action application="export" data="nolocal:transfer_state=ringing"/>
+      <action application="log" data="INFO Transfer target is ringing"/>
+      
+      <!-- Continue with normal call flow -->
+      <action application="answer"/>
+      <action application="playback" data="silence_stream://1000"/>
+    </condition>
+  </extension>
+
+  <!-- Transfer answer tracking -->
+  <extension name="transfer_answer">
+    <condition field="destination_number" expression="^transfer_answer$">
+      <!-- Update state to answered -->
+      <action application="set" data="transfer_state=answered"/>
+      <action application="export" data="nolocal:transfer_state=answered"/>
+      <action application="log" data="INFO Transfer target answered"/>
+      
+      <!-- Set up media handling -->
+      <action application="answer"/>
+      <action application="echo"/>
+    </condition>
+  </extension>
+
+  <!-- Transfer completion tracking -->
+  <extension name="transfer_complete">
+    <condition field="destination_number" expression="^transfer_complete$">
+      <!-- Update state to completed -->
+      <action application="set" data="transfer_state=completed"/>
+      <action application="export" data="nolocal:transfer_state=completed"/>
+      <action application="log" data="INFO Transfer completed"/>
+      
+      <!-- Cleanup and hangup -->
+      <action application="hangup"/>
+    </condition>
+  </extension>
+
+  <!-- Enhanced user extensions with transfer state tracking -->
+  <extension name="user_with_transfer_tracking">
+    <condition field="destination_number" expression="^(10[01][0-9])$">
+      <!-- Set presence information -->
+      <action application="export" data="nolocal:presence_id=${destination_number}@${domain_name}"/>
+      <action application="export" data="nolocal:transfer_state=none"/>
+      
+      <!-- Check if user is available -->
+      <action application="set" data="call_timeout=30"/>
+      <action application="set" data="continue_on_fail=true"/>
+      <action application="set" data="hangup_after_bridge=true"/>
+      
+      <!-- Bridge to user -->
+      <action application="bridge" data="user/${destination_number}@${domain_name}"/>
+      
+      <!-- Handle busy/no answer -->
+      <action application="answer"/>
+      <action application="sleep" data="1000"/>
+      <action application="voicemail" data="default ${domain_name} ${destination_number}"/>
+    </condition>
+  </extension>
+
+</context>
+
+<!-- Add this to your default context as well for integration -->
+<context name="default">
+
+  <!-- Call handler with transfer state initialization -->
+  <extension name="call_handler_with_transfer_state" continue="true">
+    <condition field="destination_number" expression="^.+$">
+      <!-- Initialize transfer tracking variables -->
+      <action application="set" data="transfer_state=none"/>
+      <action application="set" data="call_start_time=${switch_time_now()}"/>
+      
+      <!-- Enable dialog state notifications for this call -->
+      <action application="export" data="nolocal:presence_id=${caller_id_number}@${domain_name}"/>
+      <action application="export" data="nolocal:transfer_state=none"/>
+      
+      <!-- Set up SIP headers for enhanced dialog tracking -->
+      <action application="export" data="nolocal:sip_h_Supported=dialog-info"/>
+      <action application="export" data="nolocal:sip_h_Allow-Events=dialog"/>
+    </condition>
+  </extension>
+
+  <!-- Transfer request handler -->
+  <extension name="handle_transfer_request">
+    <condition field="destination_number" expression="^(\*\*|##)(.+)$">
+      <!-- Attended transfer -->
+      <action application="set" data="transfer_state=trying"/>
+      <action application="set" data="transfer_start_time=${switch_time_now()}"/>
+      <action application="set" data="transfer_target=$2"/>
+      <action application="export" data="nolocal:transfer_state=${transfer_state}"/>
+      <action application="export" data="nolocal:transfer_start_time=${transfer_start_time}"/>
+      <action application="export" data="nolocal:transfer_target=${transfer_target}"/>
+      
+      <!-- Perform the transfer -->
+      <action application="att_xfer" data="user/$2@${domain_name}"/>
+    </condition>
+  </extension>
+
+</context>
+
+<!-- Configuration for mod_event_socket integration -->
+<configuration name="event_socket.conf" description="Socket Client">
+  <settings>
+    <param name="nat-map" value="false"/>
+    <param name="listen-ip" value="127.0.0.1"/>
+    <param name="listen-port" value="8021"/>
+    <param name="password" value="ClueCon"/>
+    <param name="apply-inbound-acl" value="loopback.auto"/>
+    <param name="stop-on-bind-error" value="true"/>
+  </settings>
+</configuration>
+
+<!-- ESL script for handling transfer state events -->
+<script name="transfer_state_monitor.lua">
+local session = freeswitch.Session()
+local con = freeswitch.EventConsumer("CHANNEL_BRIDGE", "CHANNEL_PROGRESS", "CHANNEL_ANSWER", "CHANNEL_HANGUP")
+
+if con then
+    while true do
+        local event = con:pop(1)
+        if event then
+            local event_name = event:getHeader("Event-Name")
+            local call_id = event:getHeader("variable_sip_call_id")
+            local transfer_state = event:getHeader("variable_transfer_state")
+            
+            if call_id and transfer_state and transfer_state ~= "none" then
+                freeswitch.consoleLog("INFO", string.format(
+                    "Transfer event: %s for call-id %s, state: %s\n",
+                    event_name, call_id, transfer_state))
+                
+                -- Update transfer state based on event
+                if event_name == "CHANNEL_PROGRESS" then
+                    freeswitch.API():execute("uuid_setvar", call_id .. " transfer_state ringing")
+                elseif event_name == "CHANNEL_ANSWER" then
+                    freeswitch.API():execute("uuid_setvar", call_id .. " transfer_state answered")
+                elseif event_name == "CHANNEL_HANGUP" then
+                    freeswitch.API():execute("uuid_setvar", call_id .. " transfer_state completed")
+                end
+            end
+        end
+    end
+end
+</script>

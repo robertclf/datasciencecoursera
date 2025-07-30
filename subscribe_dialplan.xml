@@ -1,0 +1,281 @@
+<!-- FreeSWITCH Dialplan for SUBSCRIBE Handler (No Source Code Changes Required) -->
+<!-- This dialplan works with subscribe_handler.lua to provide dialog state notifications -->
+
+<include>
+  <!-- Transfer Tracking Context -->
+  <context name="transfer_tracking">
+    
+    <!-- SUBSCRIBE Message Handler -->
+    <extension name="handle_subscribe">
+      <condition field="${sip_method}" expression="^SUBSCRIBE$">
+        <condition field="${sip_h_Event}" expression="dialog" break="on-true">
+          <!-- Log the SUBSCRIBE request -->
+          <action application="log" data="INFO SUBSCRIBE received: Call-ID=${sip_call_id}, Event=${sip_h_Event}, From=${sip_from_user}@${sip_from_host}"/>
+          
+          <!-- Call Lua script to handle SUBSCRIBE -->
+          <action application="lua" data="subscribe_handler.lua session"/>
+          
+          <!-- Check if Lua script provided response -->
+          <action application="set" data="subscribe_state=${subscribe_response_state}"/>
+          <action application="set" data="subscribe_xml=${subscribe_response_xml}"/>
+          <action application="set" data="subscribe_expires=${subscribe_response_expires}"/>
+          
+          <!-- Respond with 200 OK and dialog-info XML -->
+          <action application="respond" data="200 OK"/>
+          <action application="export" data="sip_h_Expires=${subscribe_expires}"/>
+          <action application="export" data="sip_h_Content-Type=application/dialog-info+xml"/>
+          
+          <!-- Send NOTIFY with dialog state -->
+          <action application="set" data="api_result=${sofia(notify ${sip_contact_uri} Event dialog Content-Type application/dialog-info+xml '${subscribe_xml}')}"/>
+          <action application="log" data="INFO Sent NOTIFY with dialog state: ${subscribe_state}"/>
+          
+          <action application="hangup"/>
+        </condition>
+        
+        <!-- Handle non-dialog SUBSCRIBE requests -->
+        <action application="log" data="WARN Non-dialog SUBSCRIBE received: ${sip_h_Event}"/>
+        <action application="respond" data="489 Bad Event"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+    
+    <!-- Transfer State Initialization -->
+    <extension name="transfer_init" continue="true">
+      <condition field="destination_number" expression="^(.+)$">
+        <!-- Initialize transfer tracking variables -->
+        <action application="set" data="transfer_state=none"/>
+        <action application="set" data="call_start_time=${epoch_time_now}"/>
+        
+        <!-- Enable presence and dialog support -->
+        <action application="export" data="presence_id=${caller_id_number}@${domain_name}"/>
+        <action application="export" data="sip_h_Supported=dialog-info"/>
+        <action application="export" data="sip_h_Allow-Events=dialog"/>
+        
+        <!-- Export variables that will be needed for SUBSCRIBE handling -->
+        <action application="export" data="nolocal:sip_call_id=${sip_call_id}"/>
+        <action application="export" data="nolocal:transfer_state=none"/>
+      </condition>
+    </extension>
+    
+    <!-- Attended Transfer Handler -->
+    <extension name="attended_transfer">
+      <condition field="destination_number" expression="^(\*87)(.+)$">
+        <!-- Set transfer tracking variables -->
+        <action application="set" data="transfer_state=trying"/>
+        <action application="set" data="transfer_start_time=${epoch_time_now}"/>
+        <action application="set" data="transfer_target=$2"/>
+        <action application="set" data="transfer_type=attended"/>
+        
+        <!-- Export for tracking -->
+        <action application="export" data="nolocal:transfer_state=trying"/>
+        <action application="export" data="nolocal:transfer_start_time=${transfer_start_time}"/>
+        <action application="export" data="nolocal:transfer_target=$2"/>
+        
+        <!-- Log transfer initiation -->
+        <action application="log" data="INFO Attended transfer initiated: ${sip_call_id} -> $2"/>
+        
+        <!-- Trigger Lua handler to record transfer state -->
+        <action application="lua" data="subscribe_handler.lua session"/>
+        
+        <!-- Set up for attended transfer -->
+        <action application="set" data="continue_on_fail=true"/>
+        <action application="set" data="hangup_after_bridge=false"/>
+        
+        <!-- Perform the transfer -->
+        <action application="att_xfer" data="user/$2@${domain_name}"/>
+      </condition>
+    </extension>
+    
+    <!-- Blind Transfer Handler -->
+    <extension name="blind_transfer">
+      <condition field="destination_number" expression="^(\#87)(.+)$">
+        <!-- Set transfer tracking variables -->
+        <action application="set" data="transfer_state=trying"/>
+        <action application="set" data="transfer_start_time=${epoch_time_now}"/>
+        <action application="set" data="transfer_target=$2"/>
+        <action application="set" data="transfer_type=blind"/>
+        
+        <!-- Export for tracking -->
+        <action application="export" data="nolocal:transfer_state=trying"/>
+        <action application="export" data="nolocal:transfer_start_time=${transfer_start_time}"/>
+        <action application="export" data="nolocal:transfer_target=$2"/>
+        
+        <!-- Log transfer initiation -->
+        <action application="log" data="INFO Blind transfer initiated: ${sip_call_id} -> $2"/>
+        
+        <!-- Trigger Lua handler to record transfer state -->
+        <action application="lua" data="subscribe_handler.lua session"/>
+        
+        <!-- Perform blind transfer -->
+        <action application="deflect" data="user/$2@${domain_name}"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+    
+  </context>
+  
+  <!-- Default Context with Transfer Support -->
+  <context name="default">
+    
+    <!-- Call Setup with Transfer Tracking -->
+    <extension name="call_setup_transfer_tracking" continue="true">
+      <condition field="destination_number" expression="^(.+)$">
+        <!-- Initialize transfer state -->
+        <action application="set" data="transfer_state=none"/>
+        <action application="set" data="call_start_time=${epoch_time_now}"/>
+        
+        <!-- Enable dialog support -->
+        <action application="export" data="presence_id=${caller_id_number}@${domain_name}"/>
+        <action application="export" data="sip_h_Supported=dialog-info"/>
+        <action application="export" data="sip_h_Allow-Events=dialog"/>
+        
+        <!-- Set up SIP INFO handling for SUBSCRIBE -->
+        <action application="export" data="sip_info_when_state_change=true"/>
+        
+        <!-- Export key variables -->
+        <action application="export" data="nolocal:transfer_state=none"/>
+        <action application="export" data="nolocal:call_start_time=${call_start_time}"/>
+      </condition>
+    </extension>
+    
+    <!-- User Extensions with Enhanced Transfer Support -->
+    <extension name="users_with_transfer">
+      <condition field="destination_number" expression="^(10[01][0-9])$">
+        <!-- Check for transfers -->
+        <action application="set" data="dialed_extension=$1"/>
+        
+        <!-- Enable call progress tracking -->
+        <action application="set" data="call_timeout=30"/>
+        <action application="set" data="continue_on_fail=true"/>
+        <action application="set" data="ringback=${us-ring}"/>
+        
+        <!-- Set bridge parameters with transfer detection -->
+        <action application="set" data="bridge_pre_execute_bleg_app=set"/>
+        <action application="set" data="bridge_pre_execute_bleg_data=transfer_state=ringing"/>
+        
+        <!-- Bridge to user -->
+        <action application="bridge" data="{presence_id=$1@${domain_name}}user/$1@${domain_name}"/>
+        
+        <!-- Handle failed bridge -->
+        <action application="answer"/>
+        <action application="sleep" data="1000"/>
+        <action application="voicemail" data="default ${domain_name} $1"/>
+      </condition>
+    </extension>
+    
+    <!-- Transfer Feature Codes -->
+    <extension name="transfer_features">
+      <condition field="destination_number" expression="^(\*\*|##)(.+)$">
+        <!-- Set transfer state -->
+        <action application="set" data="transfer_state=trying"/>
+        <action application="set" data="transfer_start_time=${epoch_time_now}"/>
+        <action application="set" data="transfer_target=$2"/>
+        
+        <!-- Export transfer variables -->
+        <action application="export" data="nolocal:transfer_state=trying"/>
+        <action application="export" data="nolocal:transfer_start_time=${transfer_start_time}"/>
+        <action application="export" data="nolocal:transfer_target=$2"/>
+        
+        <!-- Record transfer state in Lua -->
+        <action application="lua" data="subscribe_handler.lua session"/>
+        
+        <!-- Perform attended transfer -->
+        <action application="att_xfer" data="user/$2@${domain_name}"/>
+      </condition>
+    </extension>
+    
+    <!-- Bridge Progress Tracking -->
+    <extension name="bridge_progress" continue="true">
+      <condition field="${bridge_to}" expression="^.+$">
+        <!-- Update transfer state to ringing -->
+        <action application="set" data="transfer_state=ringing"/>
+        <action application="export" data="nolocal:transfer_state=ringing"/>
+        
+        <!-- Trigger Lua state update -->
+        <action application="lua" data="subscribe_handler.lua session"/>
+      </condition>
+    </extension>
+    
+  </context>
+  
+  <!-- SIP INFO Handler Context -->
+  <context name="sip_info_handler">
+    
+    <!-- Handle SIP INFO messages that might contain SUBSCRIBE -->
+    <extension name="sip_info_subscribe">
+      <condition field="${sip_method}" expression="^INFO$">
+        <condition field="${sip_body}" expression="SUBSCRIBE" break="on-true">
+          <action application="log" data="INFO SIP INFO with SUBSCRIBE body received"/>
+          <action application="lua" data="subscribe_handler.lua session"/>
+          <action application="respond" data="200 OK"/>
+          <action application="hangup"/>
+        </condition>
+        
+        <!-- Handle regular SIP INFO -->
+        <action application="info"/>
+      </condition>
+    </extension>
+    
+  </context>
+  
+</include>
+
+<!-- Event Socket Configuration for Lua Script -->
+<configuration name="event_socket.conf" description="Socket Client">
+  <settings>
+    <param name="nat-map" value="false"/>
+    <param name="listen-ip" value="127.0.0.1"/>
+    <param name="listen-port" value="8021"/>
+    <param name="password" value="ClueCon"/>
+    <param name="apply-inbound-acl" value="loopback.auto"/>
+    <param name="stop-on-bind-error" value="true"/>
+  </settings>
+</configuration>
+
+<!-- Lua Configuration -->
+<configuration name="lua.conf" description="LUA Configuration">
+  <settings>
+    <param name="xml-handler-script" value=""/>
+    <param name="xml-handler-bindings" value=""/>
+    <param name="startup-script" value="subscribe_handler.lua listen"/>
+  </settings>
+</configuration>
+
+<!-- SIP Profile Configuration Additions -->
+<!-- Add these parameters to your SIP profiles (internal.xml, external.xml) -->
+<param name="manage-presence" value="true"/>
+<param name="presence-hosts" value="${domain_name}"/>
+<param name="manage-shared-appearance" value="true"/>
+<param name="dbname" value="share_db"/>
+<param name="presence-privacy" value="false"/>
+<param name="send-message-query-on-register" value="true"/>
+<param name="send-presence-on-register" value="true"/>
+<param name="disable-srv503" value="true"/>
+<param name="enable-timer" value="false"/>
+<param name="minimum-session-expires" value="120"/>
+<param name="sip-info-when-state-change" value="true"/>
+
+<!-- Additional SIP parameters for SUBSCRIBE support -->
+<param name="accept-blind-reg" value="true"/>
+<param name="accept-blind-auth" value="true"/>
+<param name="suppress-cng" value="true"/>
+<param name="enable-soa" value="true"/>
+
+<!-- Enable message and info handling -->
+<param name="fire-message-events" value="true"/>
+<param name="fire-info-events" value="true"/>
+
+<!-- Auto-start the Lua script -->
+<script>
+  <!-- Auto-start subscribe handler -->
+  <![CDATA[
+    -- Auto-start script for subscribe handler
+    freeswitch.consoleLog("INFO", "Starting subscribe handler...\n")
+    
+    -- Start the handler in background
+    local cmd = "luarun subscribe_handler.lua listen"
+    freeswitch.API():execute("bgapi", cmd)
+    
+    freeswitch.consoleLog("INFO", "Subscribe handler started\n")
+  ]]>
+</script>
