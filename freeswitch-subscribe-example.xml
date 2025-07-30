@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FreeSWITCH Dialplan Example for SUBSCRIBE Message Handling -->
+<include>
+  <context name="public">
+    
+    <!-- Handle SUBSCRIBE requests for presence information -->
+    <extension name="presence_subscribe" continue="false">
+      <condition field="destination_number" expression="^(presence)$">
+        <condition field="${sip_req_method}" expression="^SUBSCRIBE$">
+          <condition field="${sip_h_Event}" expression="^presence$">
+            <action application="log" data="INFO Handling PRESENCE SUBSCRIBE from ${sip_from_user}@${sip_from_host}"/>
+            
+            <!-- Answer the SUBSCRIBE request -->
+            <action application="answer"/>
+            
+            <!-- Set presence state -->
+            <action application="presence" data="in ${dialed_domain} ${sip_from_user}@${dialed_domain}"/>
+            
+            <!-- Send 200 OK response -->
+            <action application="respond" data="200 OK"/>
+            
+            <!-- Optional: Log the subscription details -->
+            <action application="log" data="NOTICE SUBSCRIBE accepted for presence from ${sip_from_user}@${sip_from_host}"/>
+          </condition>
+        </condition>
+      </condition>
+    </extension>
+
+    <!-- Handle SUBSCRIBE requests for Message Waiting Indication (MWI) -->
+    <extension name="mwi_subscribe" continue="false">
+      <condition field="destination_number" expression="^(mwi|voicemail)$">
+        <condition field="${sip_req_method}" expression="^SUBSCRIBE$">
+          <condition field="${sip_h_Event}" expression="^message-summary$">
+            <action application="log" data="INFO Handling MWI SUBSCRIBE from ${sip_from_user}@${sip_from_host}"/>
+            
+            <!-- Answer the SUBSCRIBE request -->
+            <action application="answer"/>
+            
+            <!-- Check voicemail status and send NOTIFY -->
+            <action application="vm_check" data="${sip_from_user}@${dialed_domain}"/>
+            
+            <!-- Send 200 OK response -->
+            <action application="respond" data="200 OK"/>
+            
+            <action application="log" data="NOTICE MWI SUBSCRIBE accepted from ${sip_from_user}@${sip_from_host}"/>
+          </condition>
+        </condition>
+      </condition>
+    </extension>
+
+    <!-- Handle SUBSCRIBE requests for dialog state -->
+    <extension name="dialog_subscribe" continue="false">
+      <condition field="destination_number" expression="^(dialog)$">
+        <condition field="${sip_req_method}" expression="^SUBSCRIBE$">
+          <condition field="${sip_h_Event}" expression="^dialog$">
+            <action application="log" data="INFO Handling DIALOG SUBSCRIBE from ${sip_from_user}@${sip_from_host}"/>
+            
+            <!-- Answer the SUBSCRIBE request -->
+            <action application="answer"/>
+            
+            <!-- Send dialog state information -->
+            <action application="presence" data="in ${dialed_domain} ${sip_from_user}@${dialed_domain} dialog"/>
+            
+            <!-- Send 200 OK response -->
+            <action application="respond" data="200 OK"/>
+            
+            <action application="log" data="NOTICE DIALOG SUBSCRIBE accepted from ${sip_from_user}@${sip_from_host}"/>
+          </condition>
+        </condition>
+      </condition>
+    </extension>
+
+    <!-- Generic SUBSCRIBE handler with event filtering -->
+    <extension name="generic_subscribe" continue="false">
+      <condition field="${sip_req_method}" expression="^SUBSCRIBE$">
+        <action application="log" data="INFO Generic SUBSCRIBE handler - Event: ${sip_h_Event}, From: ${sip_from_user}@${sip_from_host}"/>
+        
+        <!-- Check if Event header is present -->
+        <action application="set" data="event_type=${sip_h_Event}"/>
+        
+        <!-- Handle different event types -->
+        <action application="execute_extension" data="handle_${event_type} XML public"/>
+        
+        <!-- Default response if no specific handler -->
+        <action application="respond" data="200 OK"/>
+        <action application="log" data="NOTICE Generic SUBSCRIBE processed for event: ${event_type}"/>
+      </condition>
+    </extension>
+
+    <!-- Specific handler for keep-alive subscriptions -->
+    <extension name="handle_keep-alive" continue="false">
+      <condition field="destination_number" expression="^handle_keep-alive$">
+        <action application="log" data="INFO Handling keep-alive SUBSCRIBE"/>
+        <action application="answer"/>
+        <action application="respond" data="200 OK"/>
+      </condition>
+    </extension>
+
+    <!-- Handle SUBSCRIBE with authentication -->
+    <extension name="authenticated_subscribe" continue="false">
+      <condition field="${sip_req_method}" expression="^SUBSCRIBE$">
+        <condition field="${sip_authorized}" expression="^true$">
+          <action application="log" data="INFO Authenticated SUBSCRIBE from ${sip_from_user}@${sip_from_host}"/>
+          
+          <!-- Process the authenticated subscription -->
+          <action application="answer"/>
+          
+          <!-- Set subscription expiry (default 3600 seconds) -->
+          <action application="set" data="sip_expires=${sip_h_Expires}"/>
+          <action application="set" data="sip_expires=${if(${sip_expires},${sip_expires},3600)}"/>
+          
+          <!-- Send appropriate NOTIFY based on event type -->
+          <action application="presence" data="in ${dialed_domain} ${sip_from_user}@${dialed_domain}"/>
+          
+          <action application="respond" data="200 OK"/>
+          <action application="log" data="NOTICE Authenticated SUBSCRIBE processed, expires in ${sip_expires} seconds"/>
+        </condition>
+        
+        <!-- Handle unauthenticated SUBSCRIBE -->
+        <condition field="${sip_authorized}" expression="^false$">
+          <action application="log" data="WARNING Unauthenticated SUBSCRIBE attempt from ${sip_from_user}@${sip_from_host}"/>
+          <action application="respond" data="401 Unauthorized"/>
+        </condition>
+      </condition>
+    </extension>
+
+    <!-- Error handling for malformed SUBSCRIBE requests -->
+    <extension name="subscribe_error_handler" continue="false">
+      <condition field="${sip_req_method}" expression="^SUBSCRIBE$">
+        <condition field="${sip_h_Event}" expression="^$">
+          <action application="log" data="ERROR SUBSCRIBE missing Event header from ${sip_from_user}@${sip_from_host}"/>
+          <action application="respond" data="400 Bad Request"/>
+        </condition>
+      </condition>
+    </extension>
+
+  </context>
+</include>

@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+
+<!-- SIPp scenario for testing FreeSWITCH SUBSCRIBE handling -->
+<scenario name="SUBSCRIBE Test Scenario">
+
+  <!-- Send SUBSCRIBE request -->
+  <send retrans="500">
+    <![CDATA[
+      SUBSCRIBE sip:[service]@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      From: <sip:[field0]@[field1]>;tag=[pid]SIPpTag00[call_number]
+      To: <sip:[service]@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 1 SUBSCRIBE
+      Contact: <sip:[field0]@[local_ip]:[local_port];transport=[transport]>
+      Max-Forwards: 70
+      Event: presence
+      Expires: 3600
+      Accept: application/pidf+xml
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!-- Receive 401 Unauthorized (if authentication required) -->
+  <recv response="401" auth="true" optional="true">
+  </recv>
+
+  <!-- Send authenticated SUBSCRIBE if 401 received -->
+  <send retrans="500">
+    <![CDATA[
+      SUBSCRIBE sip:[service]@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      From: <sip:[field0]@[field1]>;tag=[pid]SIPpTag00[call_number]
+      To: <sip:[service]@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 2 SUBSCRIBE
+      Contact: <sip:[field0]@[local_ip]:[local_port];transport=[transport]>
+      Max-Forwards: 70
+      Event: presence
+      Expires: 3600
+      Accept: application/pidf+xml
+      [authentication]
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!-- Receive 200 OK response -->
+  <recv response="200">
+  </recv>
+
+  <!-- Receive NOTIFY message -->
+  <recv request="NOTIFY" optional="true">
+  </recv>
+
+  <!-- Send 200 OK to NOTIFY -->
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!-- Wait for additional NOTIFY messages -->
+  <recv request="NOTIFY" optional="true">
+    <action>
+      <log message="Received NOTIFY message"/>
+    </action>
+  </recv>
+
+  <!-- Send 200 OK to additional NOTIFY -->
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!-- Send SUBSCRIBE with Expires: 0 to unsubscribe -->
+  <send retrans="500">
+    <![CDATA[
+      SUBSCRIBE sip:[service]@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      From: <sip:[field0]@[field1]>;tag=[pid]SIPpTag00[call_number]
+      To: <sip:[service]@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 3 SUBSCRIBE
+      Contact: <sip:[field0]@[local_ip]:[local_port];transport=[transport]>
+      Max-Forwards: 70
+      Event: presence
+      Expires: 0
+      Accept: application/pidf+xml
+      [authentication]
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!-- Receive final 200 OK for unsubscribe -->
+  <recv response="200">
+  </recv>
+
+  <!-- Receive final NOTIFY with Subscription-State: terminated -->
+  <recv request="NOTIFY" optional="true">
+  </recv>
+
+  <!-- Send final 200 OK -->
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!-- Wait for end of scenario -->
+  <pause milliseconds="1000"/>
+
+</scenario>
