@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+FreeSWITCH Dialplan Example for Handling SIP SUBSCRIBE Messages
+This configuration demonstrates how to handle SUBSCRIBE requests for:
+1. Presence subscriptions
+2. Message Waiting Indicator (MWI) subscriptions
+3. Dialog-info subscriptions
+-->
+
+<include>
+  <context name="public">
+    <!-- Handle incoming SUBSCRIBE requests for presence -->
+    <extension name="presence_subscribe">
+      <condition field="destination_number" expression="^(.*)$">
+        <condition field="${sip_req_host}" expression="^(.*)$">
+          <condition field="${sip_req_uri}" expression="^sip:(.*)@(.*)$">
+            <!-- Log the SUBSCRIBE request -->
+            <action application="log" data="INFO SUBSCRIBE Request: From=${sip_from_user}@${sip_from_host} To=${sip_to_user}@${sip_to_host} Event=${sip_h_Event}"/>
+            
+            <!-- Handle presence subscriptions -->
+            <action application="set" data="presence_id=${sip_to_user}@${sip_to_host}"/>
+            
+            <!-- Check if this is a presence subscription -->
+            <action application="set" data="continue_on_fail=true"/>
+            
+            <!-- Respond with 200 OK for valid subscriptions -->
+            <action application="respond" data="200 OK"/>
+            
+            <!-- Send initial presence notification -->
+            <action application="presence" data="in ${presence_id} ${sip_from_user}@${sip_from_host} open XML"/>
+            
+            <action application="hangup"/>
+          </condition>
+        </condition>
+      </condition>
+    </extension>
+
+    <!-- Handle MWI (Message Waiting Indicator) subscriptions -->
+    <extension name="mwi_subscribe">
+      <condition field="${sip_h_Event}" expression="^message-summary$">
+        <condition field="destination_number" expression="^(.*)$">
+          <!-- Log MWI subscription -->
+          <action application="log" data="INFO MWI SUBSCRIBE: User=${sip_to_user} From=${sip_from_user}@${sip_from_host}"/>
+          
+          <!-- Set MWI subscription variables -->
+          <action application="set" data="mwi_account=${sip_to_user}@${domain_name}"/>
+          
+          <!-- Check voicemail count for the user -->
+          <action application="set" data="vm_count=${vm_message_count(${mwi_account})}"/>
+          
+          <!-- Respond with 200 OK -->
+          <action application="respond" data="200 OK"/>
+          
+          <!-- Send MWI notification -->
+          <action application="send_message_waiting_indicator" data="${mwi_account} ${vm_count}"/>
+          
+          <action application="hangup"/>
+        </condition>
+      </condition>
+    </extension>
+
+    <!-- Handle dialog-info subscriptions -->
+    <extension name="dialog_subscribe">
+      <condition field="${sip_h_Event}" expression="^dialog$">
+        <condition field="destination_number" expression="^(.*)$">
+          <!-- Log dialog subscription -->
+          <action application="log" data="INFO DIALOG SUBSCRIBE: User=${sip_to_user} From=${sip_from_user}@${sip_from_host}"/>
+          
+          <!-- Set dialog subscription variables -->
+          <action application="set" data="dialog_id=${sip_to_user}@${domain_name}"/>
+          
+          <!-- Respond with 200 OK -->
+          <action application="respond" data="200 OK"/>
+          
+          <!-- Send initial dialog state -->
+          <action application="send_dialog_info" data="${dialog_id}"/>
+          
+          <action application="hangup"/>
+        </condition>
+      </condition>
+    </extension>
+
+    <!-- Handle keep-alive subscriptions -->
+    <extension name="keep_alive_subscribe">
+      <condition field="${sip_h_Event}" expression="^keep-alive$">
+        <condition field="destination_number" expression="^(.*)$">
+          <!-- Log keep-alive subscription -->
+          <action application="log" data="INFO KEEP-ALIVE SUBSCRIBE: From=${sip_from_user}@${sip_from_host}"/>
+          
+          <!-- Respond with 200 OK -->
+          <action application="respond" data="200 OK"/>
+          
+          <action application="hangup"/>
+        </condition>
+      </condition>
+    </extension>
+
+    <!-- Generic SUBSCRIBE handler for unsupported event types -->
+    <extension name="unsupported_subscribe">
+      <condition field="${sip_method}" expression="^SUBSCRIBE$">
+        <condition field="destination_number" expression="^(.*)$">
+          <!-- Log unsupported subscription -->
+          <action application="log" data="WARNING Unsupported SUBSCRIBE Event: ${sip_h_Event} From=${sip_from_user}@${sip_from_host}"/>
+          
+          <!-- Respond with 489 Bad Event -->
+          <action application="respond" data="489 Bad Event"/>
+          
+          <action application="hangup"/>
+        </condition>
+      </condition>
+    </extension>
+  </context>
+
+  <!-- Internal context for authenticated users -->
+  <context name="default">
+    <!-- Enhanced presence subscription for internal users -->
+    <extension name="internal_presence_subscribe">
+      <condition field="${sip_h_Event}" expression="^presence$">
+        <condition field="destination_number" expression="^([0-9]+)$">
+          <!-- Authenticate the subscriber -->
+          <action application="set" data="auth_result=${sip_authorized}"/>
+          
+          <condition field="${auth_result}" expression="^true$">
+            <!-- Log authenticated presence subscription -->
+            <action application="log" data="INFO Authenticated Presence SUBSCRIBE: Extension=$1 From=${sip_from_user}"/>
+            
+            <!-- Set presence information -->
+            <action application="set" data="presence_id=$1@${domain_name}"/>
+            <action application="set" data="subscriber=${sip_from_user}@${domain_name}"/>
+            
+            <!-- Add to presence subscription list -->
+            <action application="presence" data="subscribe ${presence_id} ${subscriber}"/>
+            
+            <!-- Respond with 200 OK -->
+            <action application="respond" data="200 OK"/>
+            
+            <!-- Send current presence state -->
+            <action application="presence" data="probe ${presence_id} ${subscriber}"/>
+          </condition>
+          
+          <condition field="${auth_result}" expression="^false$">
+            <!-- Unauthorized subscription -->
+            <action application="log" data="WARNING Unauthorized Presence SUBSCRIBE attempt from ${sip_from_user}"/>
+            <action application="respond" data="403 Forbidden"/>
+          </condition>
+          
+          <action application="hangup"/>
+        </condition>
+      </condition>
+    </extension>
+
+    <!-- Enhanced MWI subscription for internal users -->
+    <extension name="internal_mwi_subscribe">
+      <condition field="${sip_h_Event}" expression="^message-summary$">
+        <condition field="destination_number" expression="^([0-9]+)$">
+          <!-- Authenticate the subscriber -->
+          <action application="set" data="auth_result=${sip_authorized}"/>
+          
+          <condition field="${auth_result}" expression="^true$">
+            <!-- Check if user is subscribing to their own MWI -->
+            <condition field="${sip_from_user}" expression="^$1$">
+              <!-- Log authenticated MWI subscription -->
+              <action application="log" data="INFO Authenticated MWI SUBSCRIBE: Extension=$1"/>
+              
+              <!-- Set MWI variables -->
+              <action application="set" data="mwi_account=$1@${domain_name}"/>
+              
+              <!-- Get current voicemail count -->
+              <action application="vm_message_count" data="$1@${domain_name}"/>
+              <action application="set" data="vm_total=${vm_message_count}"/>
+              <action application="set" data="vm_new=${vm_message_count_new}"/>
+              
+              <!-- Respond with 200 OK -->
+              <action application="respond" data="200 OK"/>
+              
+              <!-- Send MWI notification with current counts -->
+              <action application="send_message_waiting_indicator" data="${mwi_account} ${vm_new}/${vm_total}"/>
+            </condition>
+            
+            <condition field="${sip_from_user}" expression="^(?!$1$).*$">
+              <!-- User trying to subscribe to someone else's MWI -->
+              <action application="log" data="WARNING MWI SUBSCRIBE: User ${sip_from_user} attempted to subscribe to $1's MWI"/>
+              <action application="respond" data="403 Forbidden"/>
+            </condition>
+          </condition>
+          
+          <condition field="${auth_result}" expression="^false$">
+            <!-- Unauthorized subscription -->
+            <action application="log" data="WARNING Unauthorized MWI SUBSCRIBE attempt from ${sip_from_user}"/>
+            <action application="respond" data="401 Unauthorized"/>
+          </condition>
+          
+          <action application="hangup"/>
+        </condition>
+      </condition>
+    </extension>
+  </context>
+</include>
