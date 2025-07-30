@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+FreeSWITCH SIP Profile Configuration for SUBSCRIBE Message Handling
+This file shows the necessary SIP profile settings to enable SUBSCRIBE processing
+Place this in conf/sip_profiles/ directory
+-->
+
+<profile name="internal">
+  <aliases>
+    <alias name="default"/>
+  </aliases>
+  
+  <gateways>
+    <X-PRE-PROCESS cmd="include" data="internal/*.xml"/>
+  </gateways>
+
+  <domains>
+    <domain name="all" alias="false" parse="true"/>
+  </domains>
+
+  <settings>
+    <!-- Basic SIP settings -->
+    <param name="debug" value="0"/>
+    <param name="sip-trace" value="no"/>
+    <param name="sip-capture" value="no"/>
+    <param name="rfc2833-pt" value="101"/>
+    <param name="sip-port" value="5060"/>
+    <param name="dialplan" value="XML"/>
+    <param name="context" value="default"/>
+    
+    <!-- SUBSCRIBE and presence related settings -->
+    <param name="manage-presence" value="true"/>
+    <param name="presence-hosts" value="$${domain}"/>
+    <param name="presence-privacy" value="$${presence_privacy}"/>
+    
+    <!-- Enable SUBSCRIBE method processing -->
+    <param name="disable-register" value="false"/>
+    <param name="challenge-realm" value="auto_from"/>
+    
+    <!-- MWI (Message Waiting Indicator) settings -->
+    <param name="send-message-query-on-register" value="true"/>
+    <param name="send-presence-on-register" value="true"/>
+    
+    <!-- Subscription expiration settings -->
+    <param name="subscription-expires" value="3600"/>
+    <param name="max-subscription-expires" value="7200"/>
+    
+    <!-- Dialog-info settings -->
+    <param name="dialog-info-notify-on-start" value="true"/>
+    <param name="dialog-info-notify-on-end" value="true"/>
+    
+    <!-- NOTIFY settings -->
+    <param name="notify-on-register" value="true"/>
+    <param name="notify-no-answer-timeout" value="30"/>
+    
+    <!-- Security settings for SUBSCRIBE -->
+    <param name="auth-calls" value="$${internal_auth_calls}"/>
+    <param name="auth-all-packets" value="false"/>
+    <param name="accept-blind-auth" value="true"/>
+    
+    <!-- Codec settings -->
+    <param name="inbound-codec-prefs" value="$${global_codec_prefs}"/>
+    <param name="outbound-codec-prefs" value="$${global_codec_prefs}"/>
+    
+    <!-- Network settings -->
+    <param name="sip-ip" value="$${local_ip_v4}"/>
+    <param name="ext-sip-ip" value="auto-nat"/>
+    <param name="rtp-ip" value="$${local_ip_v4}"/>
+    <param name="ext-rtp-ip" value="auto-nat"/>
+    
+    <!-- NAT settings -->
+    <param name="local-network-acl" value="localnet.auto"/>
+    <param name="apply-nat-acl" value="nat.auto"/>
+    
+    <!-- Registration settings -->
+    <param name="force-register-domain" value="$${domain}"/>
+    <param name="force-subscription-domain" value="$${domain}"/>
+    
+    <!-- Advanced SUBSCRIBE handling -->
+    <param name="track-calls" value="true"/>
+    <param name="caller-id-type" value="rpid"/>
+    
+    <!-- Logging for debugging SUBSCRIBE messages -->
+    <param name="log-auth-failures" value="true"/>
+    <param name="log-level" value="info"/>
+  </settings>
+</profile>

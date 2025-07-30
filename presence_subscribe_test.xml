@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+
+<!--
+SIPp Test Scenario for FreeSWITCH SUBSCRIBE Handling
+Usage: sipp -sf presence_subscribe_test.xml target_host:port -m 1
+-->
+
+<scenario name="Presence Subscribe Test">
+  
+  <!-- Send SUBSCRIBE request -->
+  <send retrans="500">
+    <![CDATA[
+      SUBSCRIBE sip:[field0]@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      Max-Forwards: 70
+      From: "Test Subscriber" <sip:test@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: <sip:[field0]@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 1 SUBSCRIBE
+      Event: presence
+      Accept: application/pidf+xml
+      Expires: 3600
+      Contact: <sip:test@[local_ip]:[local_port]>
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!-- Expect 200 OK response -->
+  <recv response="200" optional="false">
+  </recv>
+
+  <!-- Expect NOTIFY (initial presence notification) -->
+  <recv request="NOTIFY" optional="true">
+  </recv>
+
+  <!-- Send 200 OK to NOTIFY -->
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!-- Wait for additional NOTIFY messages -->
+  <recv request="NOTIFY" optional="true" timeout="5000">
+  </recv>
+
+  <!-- Send 200 OK to additional NOTIFY -->
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!-- Send SUBSCRIBE with Expires: 0 to unsubscribe -->
+  <send retrans="500">
+    <![CDATA[
+      SUBSCRIBE sip:[field0]@[remote_ip]:[remote_port] SIP/2.0
+      Via: SIP/2.0/[transport] [local_ip]:[local_port];branch=[branch]
+      Max-Forwards: 70
+      From: "Test Subscriber" <sip:test@[local_ip]:[local_port]>;tag=[pid]SIPpTag00[call_number]
+      To: <sip:[field0]@[remote_ip]:[remote_port]>
+      Call-ID: [call_id]
+      CSeq: 2 SUBSCRIBE
+      Event: presence
+      Expires: 0
+      Contact: <sip:test@[local_ip]:[local_port]>
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!-- Expect 200 OK for unsubscribe -->
+  <recv response="200" optional="false">
+  </recv>
+
+  <!-- Expect final NOTIFY with terminated state -->
+  <recv request="NOTIFY" optional="true">
+  </recv>
+
+  <!-- Send 200 OK to final NOTIFY -->
+  <send>
+    <![CDATA[
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!-- Pause before ending scenario -->
+  <pause milliseconds="1000"/>
+
+</scenario>
